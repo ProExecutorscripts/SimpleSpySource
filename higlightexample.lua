@@ -1,33 +1,140 @@
 local Highlight = require(...)
 
-local myFrame = Instance.new("Frame")
---- Instantiates and returns a new Highlight instance- creates the actual gui within the frame
-local myHighlight = Highlight.new(myFrame)
+local function newHighlight(parentFrame)
+  local myHighlight = {}
 
---- Sets the raw text of the code box (\n = new line)
-myHighlight:setRaw(string)
+  local lines = {} -- Table to store lines of code as strings
+  local guiObjects = {} -- Table to store TextLabel objects for each character
 
---- Returns the (string) raw text of the code box (\n = new line)
-myHighlight:getRaw()
+  local function updateGUI()
+    -- Clear existing GUI objects
+    for _, obj in ipairs(guiObjects) do
+      obj:Destroy()
+    end
+    guiObjects = {}
 
---[[
-    char = {
-        Char: string -- The single character that the object represents
-        Color: Color3 -- The color of the character
-    }
-]]
+    local yOffset = 0
+    for lineNumber, line in ipairs(lines) do
+      local xOffset = 0
+      for i = 1, #line do
+        local char = line:sub(i, i)
+        local charData = {
+          Char = char,
+          Color = Color3.new(1, 1, 1) -- Default color (white)
+        }
 
---- Returns the (char[]) array that holds all the lines in order as strings
-myHighlight:getTable()
+        -- You'll likely add your syntax highlighting logic here to determine the correct color
+        -- Example:
+        -- if char == " " then
+        --   charData.Color = Color3.new(0.8, 0.8, 0.8) -- Slightly darker for spaces
+        -- elseif char == "-" then
+        --   charData.Color = Color3.new(1, 0, 0) -- Example: red for hyphens
+        -- end
 
---- Returns the (int) number of lines in the code box
-myHighlight:getSize()
+        local textLabel = Instance.new("TextLabel")
+        textLabel.Size = UDim2.new(0, 8, 0, 16) -- Adjust size as needed
+        textLabel.Position = UDim2.new(0, xOffset, 0, yOffset)
+        textLabel.Text = charData.Char
+        textLabel.TextColor3 = charData.Color
+        textLabel.BackgroundTransparency = 1
+        textLabel.Font = Enum.Font.Code -- Or your preferred monospaced font
+        textLabel.TextSize = 14 -- Adjust size as needed
+        textLabel.Parent = parentFrame
+        
+        table.insert(guiObjects, textLabel)
 
---- Returns the (string) line of the specified line number
-myHighlight:getLine(int)
+        xOffset = xOffset + textLabel.TextBounds.X + 2 -- Add spacing between characters
+      end
+      yOffset = yOffset + 18 -- Adjust line spacing as needed
+    end
+    parentFrame.Size = UDim2.new(1, 0, 0, yOffset) -- Adjust frame size
+  end
 
---- Replaces the specified line number with the specified string (\n will insert further lines)
-myHighlight:setLine(int, string)
+  function myHighlight:setRaw(str)
+    lines = {}
+    for line in str:gmatch("[^\n]+") do
+      table.insert(lines, line)
+    end
+    updateGUI()
+  end
 
---- Inserts a line made from the specified string and moves all existing lines down (\n will insert further lines)
-myHighlight:insertLine(int, string)
+  function myHighlight:getRaw()
+    return table.concat(lines, "\n")
+  end
+
+  function myHighlight:getTable()
+    local charTable = {}
+    for _, line in ipairs(lines) do
+      local lineTable = {}
+      for i = 1, #line do
+        local char = line:sub(i, i)
+        table.insert(lineTable, {
+          Char = char,
+          Color = Color3.new(1, 1, 1) -- Default color, update with syntax highlighting
+        })
+      end
+      table.insert(charTable, lineTable)
+    end
+    return charTable
+  end
+
+  function myHighlight:getSize()
+    return #lines
+  end
+
+  function myHighlight:getLine(lineNumber)
+    if lineNumber >= 1 and lineNumber <= #lines then
+      return lines[lineNumber]
+    else
+      return "" -- Or handle out-of-bounds error as you prefer
+    end
+  end
+
+  function myHighlight:setLine(lineNumber, str)
+    if lineNumber >= 1 and lineNumber <= #lines then
+      lines[lineNumber] = str
+      -- Handle \n within the string
+      local newLines = {}
+      for newLine in str:gmatch("[^\n]+") do
+        table.insert(newLines, newLine)
+      end
+      if #newLines > 1 then
+        table.remove(lines, lineNumber)
+        for i = #newLines, 1, -1 do
+          table.insert(lines, lineNumber, newLines[i])
+        end
+      end
+      updateGUI()
+    end
+  end
+
+  function myHighlight:insertLine(lineNumber, str)
+    if lineNumber >= 1 and lineNumber <= #lines + 1 then
+      -- Handle \n within the string
+      local newLines = {}
+      for newLine in str:gmatch("[^\n]+") do
+        table.insert(newLines, newLine)
+      end
+      for i = #newLines, 1, -1 do
+        table.insert(lines, lineNumber, newLines[i])
+      end
+      updateGUI()
+    end
+  end
+
+  return myHighlight
+end
+
+-- Example Usage (replace with your actual implementation):
+local myFrame = Instance.new("ScrollingFrame") -- Use a ScrollingFrame for longer code
+myFrame.Size = UDim2.new(0.5, 0, 0.5, 0) -- Example size
+myFrame.Position = UDim2.new(0.25, 0, 0.25, 0)
+myFrame.CanvasSize = UDim2.new(0, 0, 0, 0) -- Initially zero, will be set by updateGUI
+myFrame.Parent = game.Players.LocalPlayer.PlayerGui -- Or your desired parent
+
+local myHighlight = newHighlight(myFrame)
+
+myHighlight:setRaw("local x = 10\nprint('Hello, world!')\n-- Comment")
+
+-- myHighlight:insertLine(2, "print('Inserted line')")
+-- myHighlight:setLine(1, "local y = 20")
