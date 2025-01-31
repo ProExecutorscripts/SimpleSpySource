@@ -1,6 +1,6 @@
 --[[
-    higlight.lua v0.0.1 by exxtremewa#9394
-    
+    higlight.lua v0.0.2 by exxtremewa#9394 & chatgpt
+
     Features:
      - uses the power of fancy syntax detection algorithms to convert a frame into a syntax highlighted high quality code box
      - is cool
@@ -8,20 +8,12 @@
 
 local TextService = game:GetService("TextService")
 local RunService = game:GetService("RunService")
+
 --- The Highlight class
 --- @class Highlight
 local Highlight = {}
 
 -- PRIVATE METHODS/PROPERTIES --
-
---[[
-    Char Object:
-    {
-        Char: string -- A single character
-        Color: Color3 -- The intended color of the char
-        Line: number -- The line number
-    }
-]]
 
 local parentFrame
 local scrollingFrame
@@ -35,8 +27,8 @@ local tableContents = {}
 local line = 0
 local largestX = 0
 
-local lineSpace = 15
-local font = Enum.Font.Ubuntu
+local lineSpace = 18
+local font = Enum.Font.Code
 local textSize = 14
 
 local backgroundColor = Color3.fromRGB(40, 44, 52)
@@ -63,7 +55,7 @@ local other = {"[^_%s%w=>~<%-%+%*]", ">", "~", "<", "%-", "%+", "=", "%*"}
 local offLimits = {}
 
 --- Determines if index is in a string
-function isOffLimits(index)
+local function isOffLimits(index)
     for _, v in pairs(offLimits) do
         if index >= v[1] and index <= v[2] then
             return true
@@ -73,26 +65,12 @@ function isOffLimits(index)
 end
 
 --- Find iterator
--- function gfind(str, pattern)
---     local start = 0
---     return function()
---         local findStart, findEnd = str:find(pattern, start)
---         if findStart and findEnd ~= #str then
---             start = findEnd + 1
---             return findStart, findEnd
---         else
---             return nil
---         end
---     end
--- end
-
---- Find iterator
-function gfind(str, pattern)
+local function gfind(str, pattern)
     return coroutine.wrap(function()
         local start = 0
         while true do
             local findStart, findEnd = str:find(pattern, start)
-            if findStart and findEnd ~= #str then
+            if findStart then
                 start = findEnd + 1
                 coroutine.yield(findStart, findEnd)
             else
@@ -103,8 +81,7 @@ function gfind(str, pattern)
 end
 
 --- Finds and highlights comments with `commentColor`
-function renderComments()
-    local str = Highlight:getRaw()
+local function renderComments(str)
     local step = 1
     for _, pattern in pairs(comments) do
         for commentStart, commentEnd in gfind(str, pattern) do
@@ -113,8 +90,8 @@ function renderComments()
             end
             step += 1
             if not isOffLimits(commentStart) then
+                table.insert(offLimits, {commentStart, commentEnd})
                 for i = commentStart, commentEnd do
-                    table.insert(offLimits, {commentStart, commentEnd})
                     if tableContents[i] then
                         tableContents[i].Color = commentColor
                     end
@@ -125,7 +102,7 @@ function renderComments()
 end
 
 -- Finds and highlights strings with `stringColor`
-function renderStrings()
+local function renderStrings(str)
     local stringType
     local stringEndType
     local ignoreBackslashes
@@ -133,14 +110,17 @@ function renderStrings()
     local stringEnd
     local offLimitsIndex
     local skip = false
-    for i, char in pairs(tableContents) do
+
+    for i, charData in pairs(tableContents) do
+        local char = charData.Char
+
         if stringType then
-            char.Color = stringColor
+            charData.Color = stringColor
             local possibleString = ""
             for k = stringStart, i do
                 possibleString = possibleString .. tableContents[k].Char
             end
-            if char.Char:match(stringEndType) and not not ignoreBackslashes or (possibleString:match("(\\*)" .. stringEndType .. "$") and #possibleString:match("(\\*)" .. stringEndType .. "$") % 2 == 0) then
+            if char:match(stringEndType) and not (ignoreBackslashes and possibleString:match("(\\*)" .. stringEndType .. "$") and #possibleString:match("(\\*)" .. stringEndType .. "$") % 2 ~= 0) then
                 skip = true
                 stringType = nil
                 stringEndType = nil
@@ -149,16 +129,17 @@ function renderStrings()
                 offLimits[offLimitsIndex][2] = stringEnd
             end
         end
+
         if not skip then
             for _, v in pairs(strings) do
-                if char.Char:match(v[1]) and not isOffLimits(i) then
+                if char:match(v[1]) and not isOffLimits(i) then
                     stringType = v[1]
                     stringEndType = v[2]
                     ignoreBackslashes = v[3]
-                    char.Color = stringColor
+                    charData.Color = stringColor
                     stringStart = i
                     offLimitsIndex = #offLimits + 1
-                    offLimits[offLimitsIndex] = {stringStart, math.huge}
+                    table.insert(offLimits, {stringStart, math.huge})
                 end
             end
         end
@@ -169,8 +150,7 @@ end
 --- Highlights the specified patterns with the specified color
 --- @param patternArray string[]
 ---@param color userdata
-function highlightPattern(patternArray, color)
-    local str = Highlight:getRaw()
+local function highlightPattern(patternArray, color, str)
     local step = 1
     for _, pattern in pairs(patternArray) do
         for findStart, findEnd in gfind(str, pattern) do
@@ -191,71 +171,63 @@ end
 
 --- Automatically replaces reserved chars with escape chars
 --- @param s string
-function autoEscape(s)
-    for i = 0, #s do
-        local char = string.sub(s, i, i)
-        if char == "<" then
-            s = string.format("%s%s%s", string.sub(s, 0, i - 1), "&lt;", string.sub(s, i + 1, -1))
-            i += 3
-        elseif char == ">" then
-            s = string.format("%s%s%s", string.sub(s, 0, i - 1), "&gt;", string.sub(s, i + 1, -1))
-            i += 3
-        elseif char == '"' then
-            s = string.format("%s%s%s", string.sub(s, 0, i - 1), "&quot;", string.sub(s, i + 1, -1))
-            i += 5
-        elseif char == "'" then
-            s = string.format("%s%s%s", string.sub(s, 0, i - 1), "&apos;", string.sub(s, i + 1, -1))
-            i += 5
-        elseif char == "&" then
-            s = string.format("%s%s%s", string.sub(s, 0, i - 1), "&amp;", string.sub(s, i + 1, -1))
-            i += 4
-        end
-    end
-    -- s:gsub("<", "&lt;")
-    -- s:gsub(">", "&gt;")
-    -- s:gsub('"', "&quot;")
-    -- s:gsub("'", "&apos;")
-    -- s:gsub("&", "&amp;")
+local function autoEscape(s)
+    s = string.gsub(s, "&", "&")
+    s = string.gsub(s, "<", "<")
+    s = string.gsub(s, ">", ">")
+    s = string.gsub(s, '"', """)
+    s = string.gsub(s, "'", "'")
     return s
 end
 
 --- Main function for syntax highlighting tableContents
-function render()
+local function render()
+    local str = Highlight:getRaw() -- Get the raw string once
+    
     offLimits = {}
-    lines = {}
+    tableContents = {}
+    
+    for i = 1, #str do
+        table.insert(tableContents, {
+            Char = str:sub(i, i),
+            Color = defaultColor,
+        })
+    end
+
+    highlightPattern(functions, functionColor, str)
+    highlightPattern(numbers, numberColor, str)
+    highlightPattern(operators, operatorColor, str)
+    highlightPattern(objects, objectColor, str)
+    highlightPattern(booleans, booleanColor, str)
+    highlightPattern(other, genericColor, str)
+    renderComments(str)
+    renderStrings(str)
+
+    
     textFrame:ClearAllChildren()
     lineNumbersFrame:ClearAllChildren()
 
-    highlightPattern(functions, functionColor)
-    highlightPattern(numbers, numberColor)
-    highlightPattern(operators, operatorColor)
-    highlightPattern(objects, objectColor)
-    highlightPattern(booleans, booleanColor)
-    highlightPattern(other, genericColor)
-    renderComments()
-    renderStrings()
-
     local lastColor
     local lineStr = ""
-    local rawStr = ""
+    local rawStr = "" -- This will hold the unescaped string for calculating text size
     largestX = 0
     line = 1
 
     for i = 1, #tableContents + 1 do
         local char = tableContents[i]
-        if i == #tableContents + 1 or char.Char == "\n" then
+        if i == #tableContents + 1 or (char and char.Char == "\n") then
             lineStr = lineStr .. (lastColor and "</font>" or "")
 
             local lineText = Instance.new("TextLabel")
             local x = TextService:GetTextSize(rawStr, textSize, font, Vector2.new(math.huge, math.huge)).X + 60
-
+            
             if x > largestX then
                 largestX = x
             end
 
             lineText.TextXAlignment = Enum.TextXAlignment.Left
             lineText.TextYAlignment = Enum.TextYAlignment.Top
-            lineText.Position = UDim2.new(0, 0, 0, line * lineSpace - lineSpace / 2)
+            lineText.Position = UDim2.new(0, 0, 0, (line -1) * lineSpace)
             lineText.Size = UDim2.new(0, x, 0, textSize)
             lineText.RichText = true
             lineText.Font = font
@@ -272,7 +244,7 @@ function render()
                 lineNumber.Size = UDim2.new(1, 0, 0, lineSpace)
                 lineNumber.TextXAlignment = Enum.TextXAlignment.Right
                 lineNumber.TextColor3 = lineNumberColor
-                lineNumber.Position = UDim2.new(0, 0, 0, line * lineSpace - lineSpace / 2)
+                lineNumber.Position = UDim2.new(0, 0, 0, (line - 1) * lineSpace)
                 lineNumber.BackgroundTransparency = 1
                 lineNumber.Parent = lineNumbersFrame
             end
@@ -287,81 +259,50 @@ function render()
                 RunService.Heartbeat:Wait()
             end
         elseif char.Char == " " then
-            lineStr = lineStr .. char.Char
-            rawStr = rawStr .. char.Char
+            lineStr = lineStr .. " " -- Use non-breaking space for consistent spacing
+            rawStr = rawStr .. " "
         elseif char.Char == "\t" then
-            lineStr = lineStr .. string.rep(" ", 4)
-            rawStr = rawStr .. char.Char
+            lineStr = lineStr .. string.rep(" ", 4) -- 4 spaces for a tab
+            rawStr = rawStr .. "\t"
         else
             if char.Color == lastColor then
                 lineStr = lineStr .. autoEscape(char.Char)
             else
-                lineStr = lineStr .. string.format('%s<font color="rgb(%d,%d,%d)">', lastColor and "</font>" or "", char.Color.R * 255, char.Color.G * 255, char.Color.B * 255)
-                lineStr = lineStr .. autoEscape(char.Char)
+                lineStr = lineStr .. string.format('%s<font color="rgb(%d,%d,%d)">%s', 
+                                                   lastColor and "</font>" or "", 
+                                                   char.Color.R * 255, 
+                                                   char.Color.G * 255, 
+                                                   char.Color.B * 255,
+                                                   autoEscape(char.Char))
                 lastColor = char.Color
             end
             rawStr = rawStr .. char.Char
         end
-
-        -- local v = tableContents[i]
-        -- if not lines[v.Line] or #lines[v.Line] <= 200 then
-        --     local textBox = Instance.new("TextLabel")
-        --     local size = TextService:GetTextSize(v.Char, 14, Enum.Font.Arial, Vector2.new(math.huge, math.huge))
-        --     local lineSizeX = 0
-        --     if not lines[v.Line] then
-        --         lines[v.Line] = {}
-        --     end
-        --     if v.Char == "\n" then
-        --         textBox.Text = ""
-        --         game:GetService("RunService").Heartbeat:Wait()
-        --     elseif v.Char:match("\t") then
-        --         v.Char = "\t____"
-        --         textBox.Text = "\t____"
-        --         textBox.TextTransparency = 1
-        --     elseif v.Char:match(" ") then
-        --         v.Char = " |"
-        --         textBox.Text = " -"
-        --         textBox.TextTransparency = 1
-        --     else
-        --         textBox.Text = v.Char
-        --     end
-        --     if not lines[v.Line] then
-        --         lines[v.Line] = {}
-        --     end
-        --     for _, c in pairs(lines[v.Line]) do
-        --         lineSizeX = lineSizeX + TextService:GetTextSize(c.Char, 14, Enum.Font.Arial, Vector2.new(math.huge, math.huge)).X
-        --     end
-        --     textBox.TextColor3 = v.Color
-        --     textBox.Size = UDim2.new(0, size.X, 0, size.Y)
-        --     textBox.TextXAlignment = Enum.TextXAlignment.Left
-        --     textBox.TextYAlignment = Enum.TextYAlignment.Top
-        --     textBox.Position = UDim2.new(0, lineSizeX, 0, v.Line * lineSpace - lineSpace / 2)
-        --     textBox.BackgroundTransparency = 1
-        --     v.TextBox = textBox
-        --     table.insert(lines[v.Line], v)
-        --     textBox.Parent = textFrame
-        -- end
     end
+    
     updateZIndex()
     updateCanvasSize()
 end
 
-function onFrameSizeChange()
+local function onFrameSizeChange()
     local newSize = parentFrame.AbsoluteSize
     scrollingFrame.Size = UDim2.new(0, newSize.X, 0, newSize.Y)
+    updateCanvasSize()
 end
 
-function updateCanvasSize()
-    -- local codeSize = Vector2.new(TextService:GetTextSize(Highlight:getRaw(), textSize, font, Vector2.new(math.huge, math.huge)).X + 60, #lines * lineSpace + 60)
+local function updateCanvasSize()
     scrollingFrame.CanvasSize = UDim2.new(0, largestX, 0, line * lineSpace)
 end
 
-function updateZIndex()
+local function updateZIndex()
     for _, v in pairs(parentFrame:GetDescendants()) do
         if v:IsA("GuiObject") then
-            v.ZIndex = parentFrame.ZIndex
+            v.ZIndex = parentFrame.ZIndex + 1
         end
     end
+    scrollingFrame.ZIndex = parentFrame.ZIndex
+    textFrame.ZIndex = parentFrame.ZIndex + 1
+    lineNumbersFrame.ZIndex = parentFrame.ZIndex + 1
 end
 
 -- PUBLIC METHODS --
@@ -383,13 +324,14 @@ function Highlight:init(frame)
         scrollingFrame.BackgroundColor3 = backgroundColor
         scrollingFrame.BorderSizePixel = 0
         scrollingFrame.ScrollBarThickness = 4
+        scrollingFrame.ScrollingDirection = Enum.ScrollingDirection.Both
 
-        textFrame.Name = ""
+        textFrame.Name = "TextFrame"
         textFrame.Size = UDim2.new(1, -40, 1, 0)
         textFrame.Position = UDim2.new(0, 40, 0, 0)
         textFrame.BackgroundTransparency = 1
 
-        lineNumbersFrame.Name = ""
+        lineNumbersFrame.Name = "LineNumbersFrame"
         lineNumbersFrame.Size = UDim2.new(0, 25, 1, 0)
         lineNumbersFrame.BackgroundTransparency = 1
 
@@ -397,7 +339,6 @@ function Highlight:init(frame)
         lineNumbersFrame.Parent = scrollingFrame
         scrollingFrame.Parent = parentFrame
 
-        render()
         parentFrame:GetPropertyChangedSignal("AbsoluteSize"):Connect(onFrameSizeChange)
         parentFrame:GetPropertyChangedSignal("ZIndex"):Connect(updateZIndex)
     else
@@ -408,31 +349,24 @@ end
 --- Sets the raw text of the code box (\n = new line, \t converted to spaces)
 --- @param raw string
 function Highlight:setRaw(raw)
-    raw = raw .. "\n"
-    tableContents = {}
-    local line = 1
-    for i = 1, #raw do
-        table.insert(tableContents, {
-            Char = raw:sub(i, i),
-            Color = defaultColor,
-            -- Line = line
-        })
-        if i % 1000 == 0 then
-            RunService.Heartbeat:Wait()
-        end
-        -- if raw:sub(i, i) == "\n" then
-        --     line = line + 1
-        -- end
-    end
+    
     render()
+    lines = {}
+    for line in raw:gmatch("[^\n]+") do
+        table.insert(lines, line)
+    end
+    
 end
 
 --- Returns the (string) raw text of the code box (\n = new line). This includes placeholder characters so it should only be used internally.
 --- @return string
 function Highlight:getRaw()
     local result = ""
-    for _, char in pairs(tableContents) do
-        result = result .. char.Char
+    for i, line in ipairs(lines) do
+        result = result .. line
+        if i < #lines then
+            result = result .. "\n"
+        end
     end
     return result
 end
@@ -441,8 +375,11 @@ end
 --- @return string
 function Highlight:getString()
     local result = ""
-    for _, char in pairs(tableContents) do
-        result = result .. char.Char:sub(1, 1)
+    for i, line in ipairs(lines) do
+        result = result .. line
+        if i < #lines then
+            result = result .. "\n"
+        end
     end
     return result
 end
@@ -450,90 +387,74 @@ end
 --- Returns the (char[]) array that holds all the lines in order as strings
 --- @return table[]
 function Highlight:getTable()
-    return tableContents
+    local charTable = {}
+    for _, line in ipairs(lines) do
+        local lineTable = {}
+        for i = 1, #line do
+            local char = line:sub(i, i)
+            table.insert(lineTable, {
+              Char = char,
+              Color = Color3.new(1, 1, 1) -- Default color, update with syntax highlighting
+            })
+        end
+        table.insert(charTable, lineTable)
+    end
+    return charTable
 end
 
 --- Returns the (int) number of lines in the code box
 --- @return number
 function Highlight:getSize()
-    return #tableContents
+    return #lines
 end
 
 --- Returns the (string) line of the specified line number
---- @param line number
+--- @param line_number number
 --- @return string
-function Highlight:getLine(line)
-    local currentline = 0
-    local rightLine = false
-    local result = ""
-    for _, v in pairs(tableContents) do
-        currentline = currentline + 1
-        if v.Char == "\n" and not rightLine then
-            rightLine = true
-        end
-        if rightLine and v.Char ~= "\n" then
-            result = result .. v.Char
-        elseif rightLine then
-            break
-        end
+function Highlight:getLine(line_number)
+    if line_number >= 1 and line_number <= #lines then
+        return lines[line_number]
+    else
+        return ""
     end
-    return result
 end
 
 --- Replaces the specified line number with the specified string (\n will overwrite further lines)
---- @param line number
+--- @param line_number number
 ---@param text string
-function Highlight:setLine(line, text)
-    if #tableContents and line >= tableContents[#tableContents].Line then
-        for i = tableContents[#tableContents].Line, line do
-            table.insert(tableContents, {
-                Char = "\n",
-                Line = i,
-                Color = defaultColor
-            })
-            local str = Highlight:getRaw()
-            str = str:sub(0, #str) .. text
-            Highlight:setRaw(str)
-            return
+function Highlight:setLine(line_number, text)
+    if line_number >= 1 and line_number <= #lines then
+        lines[line_number] = text
+        local newLines = {}
+        for newLine in text:gmatch("[^\n]+") do
+            table.insert(newLines, newLine)
         end
-    elseif not #tableContents then
-        return
-    end
-    local str = Highlight:getRaw()
-    local lastStart = 0
-    local currentLine = 0
-    for i in gfind(str, "\n") do
-        currentLine = currentLine + 1
-        if line == currentLine then
-            str = str:sub(0, lastStart) .. text .. str:sub(i, #str)
-            Highlight:setRaw(str)
-            return
+        if #newLines > 1 then
+            table.remove(lines, line_number)
+            for i = #newLines, 1, -1 do
+              table.insert(lines, line_number, newLines[i])
+            end
         end
+        
+        render()
     end
-    error("Unable to set line")
 end
 
 --- Inserts a line made from the specified string and moves all existing lines down (\n will insert further lines)
---- @param line number
+--- @param line_number number
 ---@param text string
-function Highlight:insertLine(line, text)
-    if #tableContents and line >= tableContents[#tableContents].Line then
-        Highlight:setLine(line, text)
-    elseif not #tableContents then
-        return
-    end
-    local str = Highlight:getRaw()
-    local lastStart = 0
-    local currentLine = 0
-    for i in gfind(str, "\n") do
-        currentLine = currentLine + 1
-        if line == currentLine then
-            str = str:sub(0, lastStart) .. "\n" .. text .. "\n" .. str:sub(i, #str)
-            Highlight:setRaw(str)
-            return
+function Highlight:insertLine(line_number, text)
+    if line_number >= 1 and line_number <= #lines + 1 then
+        local newLines = {}
+        for newLine in text:gmatch("[^\n]+") do
+            table.insert(newLines, newLine)
         end
+        for i = #newLines, 1, -1 do
+            table.insert(lines, line_number, newLines[i])
+        end
+        
+        render()
     end
-    error("Unable to insert line")
 end
 
 -- CONSTRUCTOR --
